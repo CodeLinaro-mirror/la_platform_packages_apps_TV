@@ -17,51 +17,33 @@
 package com.android.tv.common.feature;
 
 import android.content.Context;
-import android.os.Build;
-import android.support.v4.os.BuildCompat;
+import android.os.Build.VERSION;
+import android.os.Build.VERSION_CODES;
 
-/**
- *  Holder for SDK version features
- */
-public class Sdk {
+/** Holder for SDK version features */
+public final class Sdk {
 
-    public static final Feature N_PRE_2_OR_HIGHER =
-            new SdkPreviewVersionFeature(Build.VERSION_CODES.M, 2, true);
+    public static final Feature AT_LEAST_M = new AtLeast(VERSION_CODES.M);
 
-    private static class SdkPreviewVersionFeature implements Feature {
-        private final int mVersionCode;
-        private final int mPreviewCode;
-        private final boolean mAllowHigherPreview;
+    public static final Feature AT_LEAST_N = new AtLeast(VERSION_CODES.N);
 
-        private SdkPreviewVersionFeature(int versionCode, int previewCode,
-                boolean allowHigerPreview) {
-            mVersionCode = versionCode;
-            mPreviewCode = previewCode;
-            mAllowHigherPreview = allowHigerPreview;
+    public static final Feature AT_LEAST_O = new AtLeast(VERSION_CODES.O);
+
+    public static final Feature AT_LEAST_P = new AtLeast(VERSION_CODES.P); // AOSP_OC:strip_line
+
+    private static final class AtLeast implements Feature {
+
+        private final int versionCode;
+
+        private AtLeast(int versionCode) {
+            this.versionCode = versionCode;
         }
 
         @Override
-        public boolean isEnabled(Context context) {
-            try {
-                if (mAllowHigherPreview) {
-                    return Build.VERSION.SDK_INT == mVersionCode
-                            && Build.VERSION.PREVIEW_SDK_INT >= mPreviewCode;
-                } else {
-                    return Build.VERSION.SDK_INT == mVersionCode
-                            && Build.VERSION.PREVIEW_SDK_INT == mPreviewCode;
-                }
-            } catch (NoSuchFieldError e) {
-                return false;
-            }
+        public boolean isEnabled(Context unused) {
+            return VERSION.SDK_INT >= versionCode;
         }
     }
-
-    public static final Feature AT_LEAST_N = new Feature() {
-        @Override
-        public boolean isEnabled(Context context) {
-            return BuildCompat.isAtLeastN();
-        }
-    };
 
     private Sdk() {}
 }

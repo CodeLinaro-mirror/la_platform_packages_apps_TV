@@ -20,9 +20,7 @@ import android.content.Context;
 import android.graphics.drawable.Drawable;
 import android.media.tv.TvContentRating;
 import android.text.TextUtils;
-
 import com.android.tv.R;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -33,13 +31,10 @@ public class ContentRatingSystem {
      * A comparator that implements the display order of a group of content rating systems.
      */
     public static final Comparator<ContentRatingSystem> DISPLAY_NAME_COMPARATOR =
-            new Comparator<ContentRatingSystem>() {
-                @Override
-                public int compare(ContentRatingSystem s1, ContentRatingSystem s2) {
-                    String name1 = s1.getDisplayName();
-                    String name2 = s2.getDisplayName();
-                    return name1.compareTo(name2);
-                }
+            (ContentRatingSystem s1, ContentRatingSystem s2) -> {
+                String name1 = s1.getDisplayName();
+                String name2 = s2.getDisplayName();
+                return name1.compareTo(name2);
             };
 
     private static final String DELIMITER = "/";
@@ -86,7 +81,7 @@ public class ContentRatingSystem {
         return mDomain + DELIMITER + mName;
     }
 
-    public String getName(){
+    public String getName() {
         return mName;
     }
 
@@ -94,27 +89,36 @@ public class ContentRatingSystem {
         return mDomain;
     }
 
-    public String getTitle(){
+    public String getTitle() {
         return mTitle;
     }
 
-    public String getDescription(){
+    public String getDescription() {
         return mDescription;
     }
 
-    public List<String> getCountries(){
+    public List<String> getCountries() {
         return mCountries;
     }
 
-    public List<Rating> getRatings(){
+    public List<Rating> getRatings() {
         return mRatings;
     }
 
-    public List<SubRating> getSubRatings(){
+    public Rating getRating(String name) {
+        for (Rating rating : mRatings) {
+            if (TextUtils.equals(rating.getName(), name)) {
+                return rating;
+            }
+        }
+        return null;
+    }
+
+    public List<SubRating> getSubRatings() {
         return mSubRatings;
     }
 
-    public List<Order> getOrders(){
+    public List<Order> getOrders() {
         return mOrders;
     }
 
@@ -130,9 +134,7 @@ public class ContentRatingSystem {
         return mIsCustom;
     }
 
-    /**
-     * Returns true if the ratings is owned by this content rating system.
-     */
+    /** Returns true if the ratings is owned by this content rating system. */
     public boolean ownsRating(TvContentRating rating) {
         return mDomain.equals(rating.getDomain()) && mName.equals(rating.getRatingSystem());
     }
@@ -152,9 +154,16 @@ public class ContentRatingSystem {
     }
 
     private ContentRatingSystem(
-            String name, String domain, String title, String description, List<String> countries,
-            String displayName, List<Rating> ratings, List<SubRating> subRatings,
-            List<Order> orders, boolean isCustom) {
+            String name,
+            String domain,
+            String title,
+            String description,
+            List<String> countries,
+            String displayName,
+            List<Rating> ratings,
+            List<SubRating> subRatings,
+            List<Order> orders,
+            boolean isCustom) {
         mName = name;
         mDomain = domain;
         mTitle = title;
@@ -289,8 +298,8 @@ public class ContentRatingSystem {
                     }
                 }
                 if (!used) {
-                    throw new IllegalArgumentException("Subrating " + subRating.getName() +
-                        " isn't used by any rating");
+                    throw new IllegalArgumentException(
+                            "Subrating " + subRating.getName() + " isn't used by any rating");
                 }
             }
 
@@ -301,8 +310,17 @@ public class ContentRatingSystem {
                 }
             }
 
-            return new ContentRatingSystem(mName, mDomain, mTitle, mDescription, mCountries,
-                    displayName, ratings, subRatings, orders, mIsCustom);
+            return new ContentRatingSystem(
+                    mName,
+                    mDomain,
+                    mTitle,
+                    mDescription,
+                    mCountries,
+                    displayName,
+                    ratings,
+                    subRatings,
+                    orders,
+                    mIsCustom);
         }
     }
 
@@ -338,8 +356,13 @@ public class ContentRatingSystem {
             return mSubRatings;
         }
 
-        private Rating(String name, String title, String description, Drawable icon,
-                int contentAgeHint, List<SubRating> subRatings) {
+        private Rating(
+                String name,
+                String title,
+                String description,
+                Drawable icon,
+                int contentAgeHint,
+                List<SubRating> subRatings) {
             mName = name;
             mTitle = title;
             mDescription = description;
@@ -356,8 +379,7 @@ public class ContentRatingSystem {
             private int mContentAgeHint = -1;
             private final List<String> mSubRatingNames = new ArrayList<>();
 
-            public Builder() {
-            }
+            public Builder() {}
 
             public void setName(String name) {
                 mName = name;
@@ -391,8 +413,8 @@ public class ContentRatingSystem {
                     throw new IllegalArgumentException("Invalid subrating for rating " + mName);
                 }
                 if (mContentAgeHint < 0) {
-                    throw new IllegalArgumentException("Rating " + mName + " should define " +
-                        "non-negative contentAgeHint");
+                    throw new IllegalArgumentException(
+                            "Rating " + mName + " should define " + "non-negative contentAgeHint");
                 }
 
                 List<SubRating> subRatings = new ArrayList<>();
@@ -406,12 +428,11 @@ public class ContentRatingSystem {
                         }
                     }
                     if (!found) {
-                        throw new IllegalArgumentException("Unknown subrating name " + subRatingId +
-                                " in rating " + mName);
+                        throw new IllegalArgumentException(
+                                "Unknown subrating name " + subRatingId + " in rating " + mName);
                     }
                 }
-                return new Rating(
-                        mName, mTitle, mDescription, mIcon, mContentAgeHint, subRatings);
+                return new Rating(mName, mTitle, mDescription, mIcon, mContentAgeHint, subRatings);
             }
         }
     }
@@ -451,8 +472,7 @@ public class ContentRatingSystem {
             private String mDescription;
             private Drawable mIcon;
 
-            public Builder() {
-            }
+            public Builder() {}
 
             public void setName(String name) {
                 mName = name;
@@ -491,8 +511,8 @@ public class ContentRatingSystem {
         }
 
         /**
-         * Returns index of the rating in this order.
-         * Returns -1 if this order doesn't contain the rating.
+         * Returns index of the rating in this order. Returns -1 if this order doesn't contain the
+         * rating.
          */
         public int getRatingIndex(Rating rating) {
             for (int i = 0; i < mRatingOrder.size(); i++) {
@@ -506,8 +526,7 @@ public class ContentRatingSystem {
         public static class Builder {
             private final List<String> mRatingNames = new ArrayList<>();
 
-            public Builder() {
-            }
+            public Builder() {}
 
             private Order build(List<Rating> ratings) {
                 List<Rating> ratingOrder = new ArrayList<>();
@@ -522,8 +541,8 @@ public class ContentRatingSystem {
                     }
 
                     if (!found) {
-                        throw new IllegalArgumentException("Unknown rating " + ratingName +
-                                " in rating-order tag");
+                        throw new IllegalArgumentException(
+                                "Unknown rating " + ratingName + " in rating-order tag");
                     }
                 }
 

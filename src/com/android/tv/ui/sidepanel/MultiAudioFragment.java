@@ -19,10 +19,8 @@ package com.android.tv.ui.sidepanel;
 import android.media.tv.TvTrackInfo;
 import android.text.TextUtils;
 import android.view.KeyEvent;
-
 import com.android.tv.R;
-import com.android.tv.util.Utils;
-
+import com.android.tv.util.TvTrackInfoUtils;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -53,12 +51,15 @@ public class MultiAudioFragment extends SideFragment {
 
         List<Item> items = new ArrayList<>();
         if (tracks != null) {
-            boolean needToShowSampleRate = Utils.needToShowSampleRate(getActivity(), tracks);
+            boolean needToShowSampleRate = TvTrackInfoUtils
+                .needToShowSampleRate(getActivity(), tracks);
             int pos = 0;
             for (final TvTrackInfo track : tracks) {
-                RadioButtonItem item = new MultiAudioOptionItem(
-                        Utils.getMultiAudioString(getActivity(), track, needToShowSampleRate),
-                        track.getId());
+                RadioButtonItem item =
+                        new MultiAudioOptionItem(
+                                TvTrackInfoUtils.getMultiAudioString(
+                                        getActivity(), track, needToShowSampleRate),
+                                track.getId());
                 if (track.getId().equals(mSelectedTrackId)) {
                     item.setChecked(true);
                     mInitialSelectedPosition = pos;

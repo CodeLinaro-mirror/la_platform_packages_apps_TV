@@ -16,9 +16,16 @@
 
 package com.android.tv.common.feature;
 
-import static com.android.tv.common.feature.FeatureUtils.AND;
-import static com.android.tv.common.feature.FeatureUtils.OR;
+import static com.android.tv.common.feature.BuildTypeFeature.ENG_ONLY_FEATURE;
+import static com.android.tv.common.feature.FeatureUtils.and;
+import static com.android.tv.common.feature.FeatureUtils.or;
 import static com.android.tv.common.feature.TestableFeature.createTestableFeature;
+
+import android.content.Context;
+import android.util.Log;
+import com.android.tv.common.flags.has.HasCloudEpgFlags;
+import com.android.tv.common.util.LocationUtils;
+import com.android.tv.common.flags.CloudEpgFlags;
 
 /**
  * List of {@link Feature} that affect more than just the Live TV app.
@@ -26,30 +33,53 @@ import static com.android.tv.common.feature.TestableFeature.createTestableFeatur
  * <p>Remove the {@code Feature} once it is launched.
  */
 public class CommonFeatures {
+    private static final String TAG = "CommonFeatures";
+    private static final boolean DEBUG = false;
+
     /**
      * DVR
      *
      * <p>See <a href="https://goto.google.com/atv-dvr-onepager">go/atv-dvr-onepager</a>
      *
-     * DVR API is introduced in N, it only works when app runs as a system app.
+     * <p>DVR API is introduced in N, it only works when app runs as a system app.
      */
-    public static final TestableFeature DVR = createTestableFeature(
-            AND(OR(Sdk.N_PRE_2_OR_HIGHER, Sdk.AT_LEAST_N), SystemAppFeature.SYSTEM_APP_FEATURE));
+    public static final TestableFeature DVR =
+            createTestableFeature(and(Sdk.AT_LEAST_N, SystemAppFeature.SYSTEM_APP_FEATURE));
 
     /**
      * ENABLE_RECORDING_REGARDLESS_OF_STORAGE_STATUS
      *
-     * Enables dvr recording regardless of storage status.
+     * <p>Enables dvr recording regardless of storage status.
      */
     public static final Feature FORCE_RECORDING_UNTIL_NO_SPACE =
-            new PropertyFeature("force_recording_until_no_space", false);
+            PropertyFeature.create("force_recording_until_no_space", false);
 
-    /**
-     * USE_SW_CODEC_FOR_SD
-     *
-     * Prefer software based codec for SD channels.
-     */
-    public static final Feature USE_SW_CODEC_FOR_SD =
-            new PropertyFeature("use_sw_codec_for_sd", false
-            );
+    /** Show postal code fragment before channel scan. */
+    public static final Feature ENABLE_CLOUD_EPG_REGION =
+            or(
+                    FlagFeature.from(HasCloudEpgFlags::fromContext, CloudEpgFlags::supportedRegion),
+                    new Feature() {
+                        private final String[] supportedRegions = {
+// AOSP_Comment_Out                             "US", "GB"
+                        };
+
+                        @Override
+                        public boolean isEnabled(Context context) {
+                            String country = LocationUtils.getCurrentCountry(context);
+                            for (int i = 0; i < supportedRegions.length; i++) {
+                                if (supportedRegions[i].equalsIgnoreCase(country)) {
+                                    return true;
+                                }
+                            }
+                            if (DEBUG) Log.d(TAG, "EPG flag false after country check");
+                            return false;
+                        }
+                    });
+
+    // TODO(b/74197177): remove when UI and API finalized.
+    /** Show channel signal strength. */
+    public static final Feature TUNER_SIGNAL_STRENGTH = ENG_ONLY_FEATURE;
+
+    /** Use AudioOnlyTvService for audio-only inputs. */
+    public static final Feature ENABLE_TV_SERVICE = ENG_ONLY_FEATURE;
 }

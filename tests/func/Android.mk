@@ -10,13 +10,15 @@ LOCAL_SRC_FILES := $(call all-java-files-under, src)
 LOCAL_PACKAGE_NAME := TVFuncTests
 
 LOCAL_STATIC_JAVA_LIBRARIES := \
-    android-support-test \
+    androidx.test.runner \
     tv-test-common \
     ub-uiautomator \
 
+LOCAL_JAVA_LIBRARIES := android.test.base.stubs
+
 LOCAL_INSTRUMENTATION_FOR := LiveTv
 
-LOCAL_SDK_VERSION := current
-LOCAL_MIN_SDK_VERSION := 23  # M
+LOCAL_SDK_VERSION := system_current
 
+LOCAL_PROGUARD_ENABLED := disabled
 include $(BUILD_PACKAGE)

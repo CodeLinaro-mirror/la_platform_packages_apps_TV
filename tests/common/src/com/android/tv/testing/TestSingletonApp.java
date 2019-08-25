@@ -19,6 +19,7 @@ package com.android.tv.testing;
 import android.app.Application;
 import android.media.tv.TvInputManager;
 import android.os.AsyncTask;
+
 import com.android.tv.InputSessionManager;
 import com.android.tv.MainActivityWrapper;
 import com.android.tv.TvSingletons;
@@ -27,7 +28,6 @@ import com.android.tv.analytics.Tracker;
 import com.android.tv.common.BaseApplication;
 import com.android.tv.common.flags.impl.DefaultBackendKnobsFlags;
 import com.android.tv.common.flags.impl.DefaultCloudEpgFlags;
-import com.android.tv.common.flags.impl.DefaultConcurrentDvrPlaybackFlags;
 import com.android.tv.common.flags.impl.DefaultUiFlags;
 import com.android.tv.common.flags.impl.SettableFlagsModule;
 import com.android.tv.common.recording.RecordingStorageStatusManager;
@@ -36,7 +36,6 @@ import com.android.tv.common.util.Clock;
 import com.android.tv.data.ChannelDataManager;
 import com.android.tv.data.PreviewDataManager;
 import com.android.tv.data.ProgramDataManager;
-import com.android.tv.data.epg.EpgFetcher;
 import com.android.tv.data.epg.EpgReader;
 import com.android.tv.dvr.DvrDataManager;
 import com.android.tv.dvr.DvrManager;
@@ -53,9 +52,11 @@ import com.android.tv.tunerinputcontroller.BuiltInTunerManager;
 import com.android.tv.util.AsyncDbTask.DbExecutor;
 import com.android.tv.util.SetupUtils;
 import com.android.tv.util.TvInputManagerHelper;
-import com.android.tv.util.account.AccountHelper;
+
 import com.google.common.base.Optional;
+
 import dagger.Lazy;
+
 import java.util.concurrent.Executor;
 
 /** Test application for TV app. */
@@ -114,18 +115,8 @@ public class TestSingletonApp extends Application
     }
 
     @Override
-    public boolean isChannelDataManagerLoadFinished() {
-        return false;
-    }
-
-    @Override
     public ProgramDataManager getProgramDataManager() {
         return null;
-    }
-
-    @Override
-    public boolean isProgramDataManagerCurrentProgramsLoadFinished() {
-        return false;
     }
 
     @Override
@@ -179,11 +170,6 @@ public class TestSingletonApp extends Application
     }
 
     @Override
-    public EpgFetcher getEpgFetcher() {
-        return epgFetcher;
-    }
-
-    @Override
     public SetupUtils getSetupUtils() {
         return setupUtils;
     }
@@ -195,11 +181,6 @@ public class TestSingletonApp extends Application
 
     @Override
     public MainActivityWrapper getMainActivityWrapper() {
-        return null;
-    }
-
-    @Override
-    public AccountHelper getAccountHelper() {
         return null;
     }
 
@@ -251,11 +232,6 @@ public class TestSingletonApp extends Application
     @Override
     public BuildType getBuildType() {
         return BuildType.ENG;
-    }
-
-    @Override
-    public DefaultConcurrentDvrPlaybackFlags getConcurrentDvrPlaybackFlags() {
-        return flagsModule.concurrentDvrPlaybackFlags;
     }
 
     @Override

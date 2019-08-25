@@ -16,8 +16,49 @@
 package com.android.tv.tuner.modules;
 
 import com.android.tv.tuner.source.TunerSourceModule;
+import com.android.tv.tuner.tvinput.TunerRecordingSessionFactoryImpl;
+import com.android.tv.tuner.tvinput.TunerRecordingSessionWorker;
+import com.android.tv.tuner.tvinput.TunerRecordingSessionWorkerFactory;
+import com.android.tv.tuner.tvinput.TunerSessionExoV2Factory;
+import com.android.tv.tuner.tvinput.TunerSessionV1Factory;
+import com.android.tv.tuner.tvinput.TunerSessionWorker;
+import com.android.tv.tuner.tvinput.TunerSessionWorkerExoV2;
+import com.android.tv.tuner.tvinput.TunerSessionWorkerExoV2Factory;
+import com.android.tv.tuner.tvinput.TunerSessionWorkerFactory;
+import com.android.tv.tuner.tvinput.factory.TunerRecordingSessionFactory;
+import com.android.tv.tuner.tvinput.factory.TunerSessionFactory;
+
+import dagger.Binds;
 import dagger.Module;
+import dagger.Provides;
+
+import com.android.tv.common.flags.TunerFlags;
 
 /** Dagger module for TV Tuners. */
 @Module(includes = {TunerSingletonsModule.class, TunerSourceModule.class})
-public class TunerModule {}
+public abstract class TunerModule {
+
+    @Provides
+    static TunerSessionFactory tunerSessionFactory(
+            TunerFlags tunerFlags,
+            TunerSessionV1Factory tunerSessionFactory,
+            TunerSessionExoV2Factory tunerSessionExoV2Factory) {
+        return tunerFlags.useExoplayerV2() ? tunerSessionExoV2Factory : tunerSessionFactory;
+    }
+
+    @Binds
+    abstract TunerRecordingSessionWorker.Factory tunerRecordingSessionWorkerFactory(
+            TunerRecordingSessionWorkerFactory tunerRecordingSessionWorkerFactory);
+
+    @Binds
+    abstract TunerSessionWorker.Factory tunerSessionWorkerFactory(
+            TunerSessionWorkerFactory tunerSessionWorkerFactory);
+
+    @Binds
+    abstract TunerSessionWorkerExoV2.Factory tunerSessionWorkerExoV2Factory(
+            TunerSessionWorkerExoV2Factory tunerSessionWorkerExoV2Factory);
+
+    @Binds
+    abstract TunerRecordingSessionFactory tunerRecordingSessionFactory(
+            TunerRecordingSessionFactoryImpl impl);
+}

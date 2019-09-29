@@ -25,18 +25,8 @@ public final class DefaultBackendKnobsFlags
     }
 
     @Override
-    public boolean enablePartialProgramFetch() {
-        return true;
-    }
-
-    @Override
     public long epgFetcherIntervalHour() {
         return 25;
-    }
-
-    @Override
-    public boolean fetchProgramsAsNeeded() {
-        return true;
     }
 
     @Override

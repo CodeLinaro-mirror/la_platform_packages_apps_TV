@@ -35,6 +35,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import com.android.tv.MainActivity;
 import com.android.tv.R;
 import com.android.tv.TvSingletons;
@@ -42,16 +43,21 @@ import com.android.tv.analytics.Tracker;
 import com.android.tv.common.feature.CommonFeatures;
 import com.android.tv.common.util.Clock;
 import com.android.tv.data.ChannelDataManager;
-import com.android.tv.data.Program;
 import com.android.tv.data.api.Channel;
+import com.android.tv.data.api.Program;
 import com.android.tv.dvr.DvrManager;
 import com.android.tv.dvr.data.ScheduledRecording;
 import com.android.tv.dvr.ui.DvrUiHelper;
 import com.android.tv.guide.ProgramManager.TableEntry;
 import com.android.tv.util.ToastUtils;
 import com.android.tv.util.Utils;
+
+import dagger.android.HasAndroidInjector;
+
 import java.lang.reflect.InvocationTargetException;
 import java.util.concurrent.TimeUnit;
+
+import javax.inject.Inject;
 
 public class ProgramItemView extends TextView {
     private static final String TAG = "ProgramItemView";
@@ -74,8 +80,8 @@ public class ProgramItemView extends TextView {
     private static TextAppearanceSpan sGrayedOutEpisodeTitleStyle;
 
     private final DvrManager mDvrManager;
-    private final Clock mClock;
-    private final ChannelDataManager mChannelDataManager;
+    @Inject Clock mClock;
+    @Inject ChannelDataManager mChannelDataManager;
     private ProgramGuide mProgramGuide;
     private TableEntry mTableEntry;
     private int mMaxWidthForRipple;
@@ -203,12 +209,11 @@ public class ProgramItemView extends TextView {
 
     public ProgramItemView(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
+        ((HasAndroidInjector) context).androidInjector().inject(this);
         setOnClickListener(ON_CLICKED);
         setOnFocusChangeListener(ON_FOCUS_CHANGED);
         TvSingletons singletons = TvSingletons.getSingletons(getContext());
         mDvrManager = singletons.getDvrManager();
-        mChannelDataManager = singletons.getChannelDataManager();
-        mClock = singletons.getClock();
     }
 
     private void initIfNeeded() {
@@ -531,8 +536,8 @@ public class ProgramItemView extends TextView {
     }
 
     private static int getStateCount(StateListDrawable stateListDrawable) {
-    /* Begin_AOSP_Before_Q_Comment_Out */
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        /* Begin_AOSP_Before_Q_Comment_Out */
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             return stateListDrawable.getStateCount();
         }
         /* End_AOSP_Before_Q_Comment_Out */
@@ -552,8 +557,8 @@ public class ProgramItemView extends TextView {
     }
 
     private static Drawable getStateDrawable(StateListDrawable stateListDrawable, int index) {
-    /* Begin_AOSP_Before_Q_Comment_Out */
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        /* Begin_AOSP_Before_Q_Comment_Out */
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             return stateListDrawable.getStateDrawable(index);
         }
         /* End_AOSP_Before_Q_Comment_Out */

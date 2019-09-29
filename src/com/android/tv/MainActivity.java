@@ -66,6 +66,7 @@ import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityManager;
 import android.widget.FrameLayout;
 import android.widget.Toast;
+
 import com.android.tv.MainActivity.MySingletons;
 import com.android.tv.analytics.SendChannelStatusRunnable;
 import com.android.tv.analytics.SendConfigInfoRunnable;
@@ -79,6 +80,7 @@ import com.android.tv.common.SoftPreconditions;
 import com.android.tv.common.TvContentRatingCache;
 import com.android.tv.common.WeakHandler;
 import com.android.tv.common.compat.TvInputInfoCompat;
+import com.android.tv.common.dev.DeveloperPreferences;
 import com.android.tv.common.feature.CommonFeatures;
 import com.android.tv.common.memory.MemoryManageable;
 import com.android.tv.common.singletons.HasSingletons;
@@ -92,11 +94,13 @@ import com.android.tv.common.util.SystemProperties;
 import com.android.tv.data.ChannelDataManager;
 import com.android.tv.data.ChannelImpl;
 import com.android.tv.data.OnCurrentProgramUpdatedListener;
-import com.android.tv.data.Program;
 import com.android.tv.data.ProgramDataManager;
+import com.android.tv.data.ProgramImpl;
 import com.android.tv.data.StreamInfo;
 import com.android.tv.data.WatchedHistoryManager;
 import com.android.tv.data.api.Channel;
+import com.android.tv.data.api.Program;
+import com.android.tv.data.epg.EpgFetcher;
 import com.android.tv.dialog.HalfSizedDialogFragment;
 import com.android.tv.dialog.PinDialogFragment;
 import com.android.tv.dialog.PinDialogFragment.OnPinCheckedListener;
@@ -107,6 +111,7 @@ import com.android.tv.dvr.recorder.ConflictChecker;
 import com.android.tv.dvr.ui.DvrStopRecordingFragment;
 import com.android.tv.dvr.ui.DvrUiHelper;
 import com.android.tv.features.TvFeatures;
+import com.android.tv.guide.ProgramItemView;
 import com.android.tv.menu.Menu;
 import com.android.tv.onboarding.OnboardingActivity;
 import com.android.tv.parental.ContentRatingsManager;
@@ -127,6 +132,7 @@ import com.android.tv.ui.TunableTvView;
 import com.android.tv.ui.TunableTvView.BlockScreenType;
 import com.android.tv.ui.TunableTvView.OnTuneListener;
 import com.android.tv.ui.TvOverlayManager;
+import com.android.tv.ui.TvOverlayManagerFactory;
 import com.android.tv.ui.TvViewUiManager;
 import com.android.tv.ui.sidepanel.ClosedCaptionFragment;
 import com.android.tv.ui.sidepanel.CustomizeChannelListFragment;
@@ -150,12 +156,19 @@ import com.android.tv.util.Utils;
 import com.android.tv.util.ViewCache;
 import com.android.tv.util.account.AccountHelper;
 import com.android.tv.util.images.ImageCache;
+
 import com.google.common.base.Optional;
+
 import dagger.android.AndroidInjection;
+import dagger.android.AndroidInjector;
 import dagger.android.ContributesAndroidInjector;
+import dagger.android.DispatchingAndroidInjector;
+import dagger.android.HasAndroidInjector;
+
 import com.android.tv.common.flags.BackendKnobsFlags;
 import com.android.tv.common.flags.LegacyFlags;
 import com.android.tv.common.flags.StartupFlags;
+
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayDeque;
@@ -166,6 +179,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+
 import javax.inject.Inject;
 import javax.inject.Provider;
 
@@ -174,7 +188,8 @@ public class MainActivity extends Activity
         implements OnActionClickListener,
                 OnPinCheckedListener,
                 ChannelChanger,
-                HasSingletons<MySingletons> {
+                HasSingletons<MySingletons>,
+                HasAndroidInjector {
     private static final String TAG = "MainActivity";
     private static final boolean DEBUG = false;
     private AudioCapabilitiesReceiver mAudioCapabilitiesReceiver;
@@ -265,6 +280,7 @@ public class MainActivity extends Activity
     }
 
     private final MySingletonsImpl mMySingletons = new MySingletonsImpl();
+    @Inject DispatchingAndroidInjector<Object> mAndroidInjector;
     @Inject @DbExecutor Executor mDbExecutor;
 
     private AccessibilityManager mAccessibilityManager;
@@ -286,6 +302,7 @@ public class MainActivity extends Activity
     @Inject SetupUtils mSetupUtils;
     @Inject Optional<BuiltInTunerManager> mOptionalBuiltInTunerManager;
     @Inject AccountHelper mAccountHelper;
+    @Inject EpgFetcher mEpgFetcher;
 
     @VisibleForTesting protected TunableTvView mTvView;
     private View mContentView;
@@ -320,6 +337,7 @@ public class MainActivity extends Activity
     private boolean mIsFilmModeSet;
     private float mDefaultRefreshRate;
 
+    @Inject TvOverlayManagerFactory mOverlayFactory;
     private TvOverlayManager mOverlayManager;
 
     // mIsCurrentChannelUnblockedByUser and mWasChannelUnblockedBeforeShrunkenByUser are used for
@@ -557,7 +575,7 @@ public class MainActivity extends Activity
         }
 
         tvApplication.getMainActivityWrapper().onMainActivityCreated(this);
-        if (BuildConfig.ENG && SystemProperties.ALLOW_STRICT_MODE.getValue()) {
+        if (BuildConfig.ENG && DeveloperPreferences.ALLOW_STRICT_MODE.get(this)) {
             Toast.makeText(this, "Using Strict Mode for eng builds", Toast.LENGTH_SHORT).show();
         }
         mTracker = tvApplication.getTracker();
@@ -675,7 +693,7 @@ public class MainActivity extends Activity
                 });
         mSearchFragment = new ProgramGuideSearchFragment();
         mOverlayManager =
-                new TvOverlayManager(
+                mOverlayFactory.create(
                         this,
                         mChannelTuner,
                         mTvView,
@@ -685,8 +703,7 @@ public class MainActivity extends Activity
                         inputBannerView,
                         selectInputView,
                         sceneContainer,
-                        mSearchFragment,
-                        mLegacyFlags);
+                        mSearchFragment);
         mAccessibilityManager.addAccessibilityStateChangeListener(mOverlayManager);
 
         mAudioManagerHelper = new AudioManagerHelper(this, mTvView);
@@ -833,7 +850,7 @@ public class MainActivity extends Activity
                     .getTunerInputController()
                     .executeNetworkTunerDiscoveryAsyncTask(this);
         }
-        TvSingletons.getSingletons(this).getEpgFetcher().fetchImmediatelyIfNeeded();
+        mEpgFetcher.fetchImmediatelyIfNeeded();
     }
 
     @Override
@@ -1401,7 +1418,9 @@ public class MainActivity extends Activity
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        if (SystemProperties.LOG_KEYEVENT.getValue()) Log.d(TAG, "dispatchKeyEvent(" + event + ")");
+        if (DeveloperPreferences.LOG_KEYEVENT.get(this)) {
+            Log.d(TAG, "dispatchKeyEvent(" + event + ")");
+        }
         // If an activity is closed on a back key down event, back key down events with none zero
         // repeat count or a back key up event can be happened without the first back key down
         // event which should be ignored in this activity.
@@ -1506,7 +1525,7 @@ public class MainActivity extends Activity
                 new AsyncQueryProgramTask(
                                 mDbExecutor,
                                 programUriFromIntent,
-                                Program.PROJECTION,
+                                ProgramImpl.PROJECTION,
                                 null,
                                 null,
                                 null,
@@ -1585,7 +1604,7 @@ public class MainActivity extends Activity
         protected Program onQuery(Cursor c) {
             Program program = null;
             if (c != null && c.moveToNext()) {
-                program = Program.fromCursor(c);
+                program = ProgramImpl.fromCursor(c);
             }
             return program;
         }
@@ -1601,7 +1620,7 @@ public class MainActivity extends Activity
                 Intent intent = new Intent(MainActivity.this, DetailsActivity.class);
                 intent.putExtra(DetailsActivity.CHANNEL_ID, mChannelIdFromIntent);
                 intent.putExtra(DetailsActivity.DETAILS_VIEW_TYPE, DetailsActivity.PROGRAM_VIEW);
-                intent.putExtra(DetailsActivity.PROGRAM, program);
+                intent.putExtra(DetailsActivity.PROGRAM, program.toParcelable());
                 intent.putExtra(DetailsActivity.INPUT_ID, channel.getInputId());
                 startActivity(intent);
             }
@@ -2080,7 +2099,7 @@ public class MainActivity extends Activity
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (SystemProperties.LOG_KEYEVENT.getValue()) {
+        if (DeveloperPreferences.LOG_KEYEVENT.get(this)) {
             Log.d(TAG, "onKeyDown(" + keyCode + ", " + event + ")");
         }
         switch (mOverlayManager.onKeyDown(keyCode, event)) {
@@ -2170,7 +2189,7 @@ public class MainActivity extends Activity
          *  W debug: toggle screen size
          *  V KEYCODE_MEDIA_RECORD debug: record the current channel for 30 sec
          */
-        if (SystemProperties.LOG_KEYEVENT.getValue()) {
+        if (DeveloperPreferences.LOG_KEYEVENT.get(this)) {
             Log.d(TAG, "onKeyUp(" + keyCode + ", " + event + ")");
         }
         // If we are in the middle of channel change, finish it before showing overlays.
@@ -2268,7 +2287,7 @@ public class MainActivity extends Activity
                     // Channel change is already done in the head of this method.
                     return true;
                 case KeyEvent.KEYCODE_S:
-                    if (!SystemProperties.USE_DEBUG_KEYS.getValue()) {
+                    if (!DeveloperPreferences.USE_DEBUG_KEYS.get(this)) {
                         break;
                     }
                     // fall through.
@@ -2276,7 +2295,7 @@ public class MainActivity extends Activity
                     mOverlayManager.getSideFragmentManager().show(new ClosedCaptionFragment());
                     return true;
                 case KeyEvent.KEYCODE_A:
-                    if (!SystemProperties.USE_DEBUG_KEYS.getValue()) {
+                    if (!DeveloperPreferences.USE_DEBUG_KEYS.get(this)) {
                         break;
                     }
                     // fall through.
@@ -2342,7 +2361,7 @@ public class MainActivity extends Activity
             // in case that TV isn't showing properly (e.g. no browsable channel)
             return true;
         }
-        if (SystemProperties.USE_DEBUG_KEYS.getValue() || BuildConfig.ENG) {
+        if (DeveloperPreferences.USE_DEBUG_KEYS.get(this) || BuildConfig.ENG) {
             switch (keyCode) {
                 case KeyEvent.KEYCODE_W:
                     mDebugNonFullSizeScreen = !mDebugNonFullSizeScreen;
@@ -2398,7 +2417,7 @@ public class MainActivity extends Activity
 
     @Override
     public boolean onKeyLongPress(int keyCode, KeyEvent event) {
-        if (SystemProperties.LOG_KEYEVENT.getValue()) Log.d(TAG, "onKeyLongPress(" + event);
+        if (DeveloperPreferences.LOG_KEYEVENT.get(this)) Log.d(TAG, "onKeyLongPress(" + event);
         if (USE_BACK_KEY_LONG_PRESS) {
             // Treat the BACK key long press as the normal press since we changed the behavior in
             // onBackPressed().
@@ -2468,7 +2487,7 @@ public class MainActivity extends Activity
     }
 
     private boolean dispatchKeyEventToSession(final KeyEvent event) {
-        if (SystemProperties.LOG_KEYEVENT.getValue()) {
+        if (DeveloperPreferences.LOG_KEYEVENT.get(this)) {
             Log.d(TAG, "dispatchKeyEventToSession(" + event + ")");
         }
         boolean handled = false;
@@ -2781,6 +2800,11 @@ public class MainActivity extends Activity
         }
     }
 
+    @Override
+    public AndroidInjector<Object> androidInjector() {
+        return mAndroidInjector;
+    }
+
     private static class MainActivityHandler extends WeakHandler<MainActivity> {
         MainActivityHandler(MainActivity mainActivity) {
             super(mainActivity);
@@ -2826,11 +2850,8 @@ public class MainActivity extends Activity
             Debug.getTimer(Debug.TAG_START_UP_TIMER).log("MainActivity.MyOnTuneListener.onTune");
             mChannel = channel;
             mWasUnderShrunkenTvView = wasUnderShrunkenTvView;
-            if (mBackendKnobs.enablePartialProgramFetch()
-                    || mBackendKnobs.fetchProgramsAsNeeded()) {
-                // Fetch complete projection of tuned channel.
-                mProgramDataManager.onChannelTuned(channel.getId());
-            }
+            // Fetch complete projection of tuned channel.
+            mProgramDataManager.onChannelTuned(channel.getId());
         }
 
         @Override
@@ -2991,5 +3012,8 @@ public class MainActivity extends Activity
 
         @ContributesAndroidInjector
         abstract RatingsFragment contributesRatingsFragment();
+
+        @ContributesAndroidInjector
+        abstract ProgramItemView contributesProgramItemView();
     }
 }

@@ -16,6 +16,7 @@
 package com.android.tv.modules;
 
 import android.content.Context;
+
 import com.android.tv.MainActivity;
 import com.android.tv.SetupPassthroughActivity;
 import com.android.tv.TvApplication;
@@ -25,18 +26,31 @@ import com.android.tv.common.dagger.ApplicationModule;
 import com.android.tv.common.dagger.annotations.ApplicationContext;
 import com.android.tv.data.ChannelDataManager;
 import com.android.tv.data.ChannelDataManagerFactory;
+import com.android.tv.data.epg.EpgFetchService;
+import com.android.tv.data.epg.EpgFetcher;
+import com.android.tv.data.epg.EpgFetcherImpl;
 import com.android.tv.dialog.PinDialogFragment;
+import com.android.tv.dvr.DvrDataManager;
+import com.android.tv.dvr.DvrDataManagerImpl;
+import com.android.tv.dvr.WritableDvrDataManager;
 import com.android.tv.dvr.ui.playback.DvrPlaybackActivity;
 import com.android.tv.onboarding.OnboardingActivity;
+import com.android.tv.onboarding.SetupSourcesFragment;
+import com.android.tv.setup.SystemSetupActivity;
 import com.android.tv.ui.DetailsActivity;
 import com.android.tv.util.AsyncDbTask;
 import com.android.tv.util.TvInputManagerHelper;
+
+import dagger.Binds;
 import dagger.Module;
 import dagger.Provides;
 import dagger.android.ContributesAndroidInjector;
+
 import com.android.tv.common.flags.LegacyFlags;
+
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+
 import javax.inject.Singleton;
 
 /** Dagger module for {@link TvApplication}. */
@@ -49,6 +63,8 @@ import javax.inject.Singleton;
             MainActivity.Module.class,
             OnboardingActivity.Module.class,
             SetupPassthroughActivity.Module.class,
+            SetupSourcesFragment.ContentFragment.Module.class,
+            SystemSetupActivity.Module.class,
             TvSingletonsModule.class,
         })
 public abstract class TvApplicationModule {
@@ -80,6 +96,21 @@ public abstract class TvApplicationModule {
         return channelDataManager;
     }
 
+    @Binds
+    @Singleton
+    abstract DvrDataManager providesDvrDataManager(DvrDataManagerImpl impl);
+
+    @Binds
+    @Singleton
+    abstract WritableDvrDataManager providesWritableDvrDataManager(DvrDataManagerImpl impl);
+
+    @Binds
+    @Singleton
+    abstract EpgFetcher epgFetcher(EpgFetcherImpl impl);
+
     @ContributesAndroidInjector
     abstract PinDialogFragment contributesPinDialogFragment();
+
+    @ContributesAndroidInjector
+    abstract EpgFetchService contributesEpgFetchService();
 }

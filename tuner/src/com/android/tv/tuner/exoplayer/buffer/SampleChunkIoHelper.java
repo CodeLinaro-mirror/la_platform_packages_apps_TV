@@ -26,11 +26,14 @@ import android.util.Log;
 import android.util.Pair;
 
 import com.android.tv.common.SoftPreconditions;
+import com.android.tv.common.flags.DvrFlags;
 import com.android.tv.tuner.exoplayer.buffer.RecordingSampleBuffer.BufferReason;
 
 import com.google.android.exoplayer.MediaFormat;
 import com.google.android.exoplayer.SampleHolder;
 import com.google.android.exoplayer.util.MimeTypes;
+import com.google.auto.factory.AutoFactory;
+import com.google.auto.factory.Provided;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -66,6 +69,7 @@ public class SampleChunkIoHelper implements Handler.Callback {
     private final BufferManager mBufferManager;
     private final SamplePool mSamplePool;
     private final IoCallback mIoCallback;
+    private final DvrFlags mDvrFlags;
 
     private Handler mIoHandler;
     private final ConcurrentLinkedQueue<SampleHolder> mReadSampleBuffers[];
@@ -114,6 +118,22 @@ public class SampleChunkIoHelper implements Handler.Callback {
     }
 
     /**
+     * Factory for {@link SampleChunkIoHelper}.
+     *
+     * <p>This wrapper class keeps other classes from needing to reference the {@link AutoFactory}
+     * generated class.
+     */
+    public interface Factory {
+        public SampleChunkIoHelper create(
+                List<String> ids,
+                List<MediaFormat> mediaFormats,
+                @BufferReason int bufferReason,
+                BufferManager bufferManager,
+                SamplePool samplePool,
+                IoCallback ioCallback);
+    }
+
+    /**
      * Creates {@link SampleChunk} I/O handler.
      *
      * @param ids track names
@@ -123,13 +143,15 @@ public class SampleChunkIoHelper implements Handler.Callback {
      * @param samplePool allocator for a sample
      * @param ioCallback listeners for I/O events
      */
+    @AutoFactory(implementing = Factory.class)
     public SampleChunkIoHelper(
             List<String> ids,
             List<MediaFormat> mediaFormats,
             @BufferReason int bufferReason,
             BufferManager bufferManager,
             SamplePool samplePool,
-            IoCallback ioCallback) {
+            IoCallback ioCallback,
+            @Provided DvrFlags dvrFlags) {
         mTrackCount = ids.size();
         mIds = ids;
         mMediaFormats = mediaFormats;
@@ -137,6 +159,7 @@ public class SampleChunkIoHelper implements Handler.Callback {
         mBufferManager = bufferManager;
         mSamplePool = samplePool;
         mIoCallback = ioCallback;
+        mDvrFlags = dvrFlags;
 
         mReadSampleBuffers = new ConcurrentLinkedQueue[mTrackCount];
         mHandlerReadSampleBuffers = new ConcurrentLinkedQueue[mTrackCount];
@@ -190,6 +213,14 @@ public class SampleChunkIoHelper implements Handler.Callback {
                     android.media.MediaFormat format =
                             mMediaFormats.get(i).getFrameworkMediaFormatV16();
                     format.setLong(android.media.MediaFormat.KEY_DURATION, mBufferDurationUs);
+                    if (mDvrFlags.storeVideoAspectRatio() &&
+                            mMediaFormats.get(i).pixelWidthHeightRatio > 0) {
+                        // MediaFormats doesn't store aspect ratio so updating the width
+                        // to maintain aspect ratio.
+                        format.setInteger(android.media.MediaFormat.KEY_WIDTH,
+                                (int) (mMediaFormats.get(i).width *
+                                        mMediaFormats.get(i).pixelWidthHeightRatio));
+                    }
                     if (MimeTypes.isAudio(mMediaFormats.get(i).mimeType)) {
                         audios.add(new BufferManager.TrackFormat(mIds.get(i), format));
                     } else if (MimeTypes.isVideo(mMediaFormats.get(i).mimeType)) {
@@ -298,6 +329,14 @@ public class SampleChunkIoHelper implements Handler.Callback {
                     android.media.MediaFormat format =
                             mMediaFormats.get(i).getFrameworkMediaFormatV16();
                     format.setLong(android.media.MediaFormat.KEY_DURATION, mBufferDurationUs);
+                    if (mDvrFlags.storeVideoAspectRatio() &&
+                            mMediaFormats.get(i).pixelWidthHeightRatio > 0) {
+                        // MediaFormats doesn't store aspect ratio so updating the width
+                        // to maintain aspect ratio.
+                        format.setInteger(android.media.MediaFormat.KEY_WIDTH,
+                                (int) (mMediaFormats.get(i).width *
+                                        mMediaFormats.get(i).pixelWidthHeightRatio));
+                    }
                     if (MimeTypes.isAudio(mMediaFormats.get(i).mimeType)) {
                         audios.add(new BufferManager.TrackFormat(mIds.get(i), format));
                     } else if (MimeTypes.isVideo(mMediaFormats.get(i).mimeType)) {

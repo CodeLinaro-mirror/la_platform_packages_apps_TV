@@ -36,23 +36,21 @@ import com.android.tv.tuner.exoplayer.buffer.SimpleSampleBuffer;
 import com.google.android.exoplayer.MediaFormat;
 import com.google.android.exoplayer.MediaFormatHolder;
 import com.google.android.exoplayer.SampleHolder;
-import com.google.android.exoplayer.upstream.DataSource;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.Format;
 import com.google.android.exoplayer2.FormatHolder;
-import com.google.android.exoplayer2.Timeline;
 import com.google.android.exoplayer2.decoder.DecoderInputBuffer;
 import com.google.android.exoplayer2.source.ExtractorMediaSource;
-import com.google.android.exoplayer2.source.ExtractorMediaSource.EventListener;
 import com.google.android.exoplayer2.source.MediaPeriod;
 import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.source.SampleStream;
 import com.google.android.exoplayer2.source.TrackGroupArray;
 import com.google.android.exoplayer2.trackselection.FixedTrackSelection;
 import com.google.android.exoplayer2.trackselection.TrackSelection;
-import com.google.android.exoplayer2.upstream.DataSpec;
+import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultAllocator;
-import com.google.android.exoplayer2.upstream.TransferListener;
+import com.google.auto.factory.AutoFactory;
+import com.google.auto.factory.Provided;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -90,12 +88,29 @@ public class ExoPlayerSampleExtractor implements SampleExtractor {
     private Handler mOnCompletionListenerHandler;
     private IOException mError;
 
+    /**
+     * Factory for {@link ExoPlayerSampleExtractor}.
+     *
+     * <p>This wrapper class keeps other classes from needing to reference the {@link AutoFactory}
+     * generated class.
+     */
+    public interface Factory {
+        public ExoPlayerSampleExtractor create(
+                Uri uri,
+                DataSource source,
+                @Nullable BufferManager bufferManager,
+                PlaybackBufferListener bufferListener,
+                boolean isRecording);
+    }
+
+    @AutoFactory(implementing = Factory.class)
     public ExoPlayerSampleExtractor(
             Uri uri,
-            final DataSource source,
-            BufferManager bufferManager,
+            DataSource source,
+            @Nullable BufferManager bufferManager,
             PlaybackBufferListener bufferListener,
-            boolean isRecording) {
+            boolean isRecording,
+            @Provided RecordingSampleBuffer.Factory recordingSampleBufferFactory) {
         this(
                 uri,
                 source,
@@ -103,7 +118,8 @@ public class ExoPlayerSampleExtractor implements SampleExtractor {
                 bufferListener,
                 isRecording,
                 Looper.myLooper(),
-                new HandlerThread("SourceReaderThread"));
+                new HandlerThread("SourceReaderThread"),
+                recordingSampleBufferFactory);
     }
 
     @VisibleForTesting
@@ -115,82 +131,23 @@ public class ExoPlayerSampleExtractor implements SampleExtractor {
             PlaybackBufferListener bufferListener,
             boolean isRecording,
             Looper workerLooper,
-            HandlerThread sourceReaderThread) {
+            HandlerThread sourceReaderThread,
+            RecordingSampleBuffer.Factory recordingSampleBufferFactory) {
         // It'll be used as a timeshift file chunk name's prefix.
         mId = System.currentTimeMillis();
-
-        EventListener eventListener =
-                new EventListener() {
-                    @Override
-                    public void onLoadError(IOException error) {
-                        mError = error;
-                    }
-                };
 
         mSourceReaderThread = sourceReaderThread;
         mSourceReaderWorker =
                 new SourceReaderWorker(
                         new ExtractorMediaSource(
                                 uri,
-                                new com.google.android.exoplayer2.upstream.DataSource.Factory() {
-                                    @Override
-                                    public com.google.android.exoplayer2.upstream.DataSource
-                                            createDataSource() {
-                                        // Returns an adapter implementation for ExoPlayer V2
-                                        // DataSource interface.
-                                        return new com.google.android.exoplayer2.upstream
-                                                .DataSource() {
-
-                                            private @Nullable Uri uri;
-
-                                            // TODO: uncomment once this is part of the public API.
-                                            // @Override
-                                            public void addTransferListener(
-                                                    TransferListener transferListener) {
-                                                // Do nothing. Unsupported in V1.
-                                            }
-
-                                            @Override
-                                            public long open(DataSpec dataSpec) throws IOException {
-                                                this.uri = dataSpec.uri;
-                                                return source.open(
-                                                        new com.google.android.exoplayer.upstream
-                                                                .DataSpec(
-                                                                dataSpec.uri,
-                                                                dataSpec.httpBody,
-                                                                dataSpec.absoluteStreamPosition,
-                                                                dataSpec.position,
-                                                                dataSpec.length,
-                                                                dataSpec.key,
-                                                                dataSpec.flags));
-                                            }
-
-                                            @Override
-                                            public int read(
-                                                    byte[] buffer, int offset, int readLength)
-                                                    throws IOException {
-                                                return source.read(buffer, offset, readLength);
-                                            }
-
-                                            @Override
-                                            public @Nullable Uri getUri() {
-                                                return uri;
-                                            }
-
-                                            @Override
-                                            public void close() throws IOException {
-                                                source.close();
-                                                uri = null;
-                                            }
-                                        };
-                                    }
-                                },
+                                /* dataSourceFactory= */ () -> source,
                                 new ExoPlayerExtractorsFactory(),
                                 new Handler(workerLooper),
-                                eventListener));
+                                /* eventListener= */ error -> mError = error));
         if (isRecording) {
             mSampleBuffer =
-                    new RecordingSampleBuffer(
+                    recordingSampleBufferFactory.create(
                             bufferManager,
                             bufferListener,
                             false,
@@ -200,7 +157,7 @@ public class ExoPlayerSampleExtractor implements SampleExtractor {
                 mSampleBuffer = new SimpleSampleBuffer(bufferListener);
             } else {
                 mSampleBuffer =
-                        new RecordingSampleBuffer(
+                        recordingSampleBufferFactory.create(
                                 bufferManager,
                                 bufferListener,
                                 true,
@@ -235,13 +192,9 @@ public class ExoPlayerSampleExtractor implements SampleExtractor {
         public SourceReaderWorker(MediaSource sampleSource) {
             mSampleSource = sampleSource;
             mSampleSourceListener =
-                    new MediaSource.SourceInfoRefreshListener() {
-                        @Override
-                        public void onSourceInfoRefreshed(
-                                MediaSource source, Timeline timeline, Object manifest) {
-                            // Dynamic stream change is not supported yet. b/28169263
-                            // For now, this will cause EOS and playback reset.
-                        }
+                    (source, timeline, manifest) -> {
+                        // Dynamic stream change is not supported yet. b/28169263
+                        // For now, this will cause EOS and playback reset.
                     };
             mSampleSource.prepareSource(mSampleSourceListener, null);
             mDecoderInputBuffer =

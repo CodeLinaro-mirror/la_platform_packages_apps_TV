@@ -36,7 +36,7 @@ import com.android.tv.tuner.testing.buffer.VerySlowSampleChunk;
 import com.google.android.exoplayer.MediaFormat;
 import com.google.android.exoplayer.SampleHolder;
 import com.google.android.exoplayer.SampleSource;
-import com.google.android.exoplayer.upstream.DataSource;
+import com.google.android.exoplayer2.upstream.DataSource;
 
 import org.junit.Before;
 import org.junit.Ignore;
@@ -84,7 +84,8 @@ public class SampleSourceExtractorTest {
                         listener,
                         false,
                         Looper.getMainLooper(),
-                        handlerThread);
+                        handlerThread,
+                        (bufferManager, bufferListener, enableTrickplay, bufferReason) -> null);
         assertWithMessage("Trickplay should be disabled").that(listener.getLastState()).isFalse();
         // Prepares the extractor.
         extractor.prepare();
@@ -151,7 +152,8 @@ public class SampleSourceExtractorTest {
                         listener,
                         false,
                         Looper.getMainLooper(),
-                        handlerThread);
+                        handlerThread,
+                        (bufferManager2, bufferListener, enableTrickplay, bufferReason) -> null);
 
         assertWithMessage("Trickplay should be enabled at the first")
                 .that(Boolean.TRUE)

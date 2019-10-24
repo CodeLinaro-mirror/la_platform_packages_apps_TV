@@ -26,13 +26,14 @@ import com.android.tv.testing.utils.TestUtils;
 import com.android.tv.util.SetupUtils;
 import com.android.tv.util.TvInputManagerHelper;
 
+import org.robolectric.RobolectricTestRunner;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
-import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
 
 import java.util.Comparator;
@@ -81,8 +82,8 @@ public class TvInputNewComparatorTest {
                             }
                         });
         TvInputNewComparator comparator = new TvInputNewComparator(setupUtils, inputManager);
-        ComparatorTester<TvInputInfo> comparatorTester =
-                ComparatorTester.withoutEqualsTest(comparator);
+        ComparatorTester comparatorTester =
+                new ComparatorTester(comparator).permitInconsistencyWithEquals();
         ResolveInfo resolveInfo = TestUtils.createResolveInfo("test", "test");
         for (String id : inputIdToNewInput.keySet()) {
             // Put mock resolveInfo to prevent NPE in {@link TvInputInfo#toString}
@@ -95,8 +96,8 @@ public class TvInputNewComparatorTest {
             TvInputInfo info3 =
                     TestUtils.createTvInputInfo(
                             resolveInfo, id, "test", TvInputInfo.TYPE_HDMI, true);
-            comparatorTester.addComparableGroup(info1, info2, info3);
+            comparatorTester.addEqualityGroup(info1, info2, info3);
         }
-        comparatorTester.test();
+        comparatorTester.testCompare();
     }
 }

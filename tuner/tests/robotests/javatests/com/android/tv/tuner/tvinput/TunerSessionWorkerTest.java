@@ -34,11 +34,13 @@ import com.android.tv.common.customization.CustomizationManager;
 import com.android.tv.common.flags.impl.DefaultLegacyFlags;
 import com.android.tv.testing.TestSingletonApp;
 import com.android.tv.testing.constants.ConfigConstants;
+import com.android.tv.tuner.cc.CaptionTrackRenderer;
 import com.android.tv.tuner.exoplayer.MpegTsPlayer;
 import com.android.tv.tuner.source.TsDataSourceManager;
 import com.android.tv.tuner.source.TunerTsStreamerManager;
 import com.android.tv.tuner.testing.TvTunerRobolectricTestRunner;
 import com.android.tv.tuner.tvinput.datamanager.ChannelDataManager;
+import com.android.tv.tuner.tvinput.TunerSessionOverlay;
 
 import com.google.android.exoplayer.audio.AudioCapabilities;
 
@@ -93,6 +95,12 @@ public class TunerSessionWorkerTest {
                 () -> new TunerTsStreamerManager(null);
         TsDataSourceManager.Factory tsdm =
                 new TsDataSourceManager.Factory(tsStreamerManagerProvider);
+        TunerSessionOverlay.Factory tunerSessionOverlayFactory =
+                context1 ->
+                        new TunerSessionOverlay(
+                                context1,
+                                captionLayout ->
+                                        new CaptionTrackRenderer(captionLayout, context2 -> null));
 
         new TunerSession(
                 context,
@@ -105,7 +113,7 @@ public class TunerSessionWorkerTest {
                                     context1,
                                     channelDataManager1,
                                     tunerSession1,
-                                    new TunerSessionOverlay(context1),
+                                    tunerSessionOverlay,
                                     mHandler,
                                     mLegacyFlags,
                                     (context2, bufferManager, bufferListener) -> null,
@@ -122,7 +130,8 @@ public class TunerSessionWorkerTest {
                                 }
                             };
                     return tunerSessionWorker;
-                });
+                },
+                tunerSessionOverlayFactory);
     }
 
     @Test

@@ -25,9 +25,13 @@ import android.content.pm.ResolveInfo;
 import android.content.res.Resources;
 import android.graphics.drawable.Drawable;
 import android.support.annotation.IntDef;
+import android.support.annotation.Nullable;
+import android.support.annotation.VisibleForTesting;
 import android.text.TextUtils;
 import android.util.Log;
+
 import com.android.tv.common.CommonConstants;
+
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
@@ -129,7 +133,7 @@ public class CustomizationManager {
                 sTrickplayMode = TRICKPLAY_MODE_ENABLED;
             } else {
                 try {
-                    String customization = null;
+                    String customization;
                     Resources res =
                             context.getPackageManager()
                                     .getResourcesForApplication(sCustomizationPackage);
@@ -156,27 +160,33 @@ public class CustomizationManager {
 
     private static String getCustomizationPackageName(Context context) {
         if (sCustomizationPackage == null) {
-            sCustomizationPackage = "";
+
             List<PackageInfo> packageInfos =
                     context.getPackageManager()
                             .getPackagesHoldingPermissions(CUSTOMIZE_PERMISSIONS, 0);
-            if (packageInfos.size() != 0) {
-                /** Iterate through all packages returning the first vendor customizer */
-                for (PackageInfo packageInfo : packageInfos) {
-                    if (packageInfo.packageName.startsWith("com.android") == false) {
-                        sCustomizationPackage = packageInfo.packageName;
-                        break;
-                    }
-                }
-
-                /** If no vendor package found, return first in the list */
-                if (sCustomizationPackage == "") {
-                    sCustomizationPackage = packageInfos.get(0).packageName;
-                }
-            }
+            sCustomizationPackage = getCustomizationPackageName(packageInfos);
         }
 
         return sCustomizationPackage;
+    }
+
+    @VisibleForTesting
+    static String getCustomizationPackageName(List<PackageInfo> packageInfos) {
+        String packageName = "";
+        if (!packageInfos.isEmpty()) {
+            /** Iterate through all packages returning the first vendor customizer */
+            for (PackageInfo packageInfo : packageInfos) {
+                if (packageInfo.packageName.startsWith("com.android") == false) {
+                    packageName = packageInfo.packageName;
+                    break;
+                }
+            }
+            /** If no vendor package found, return first in the list */
+            if (TextUtils.isEmpty(packageName)) {
+                packageName = packageInfos.get(0).packageName;
+            }
+        }
+        return packageName;
     }
 
     /** Initialize TV customization options. Run this API only on the main thread. */
@@ -260,6 +270,7 @@ public class CustomizationManager {
      *
      * <p>Row ID is one of ID_OPTIONS_ROW or ID_PARTNER_ROW.
      */
+    @Nullable
     public List<CustomAction> getCustomActions(String rowId) {
         return mRowIdToCustomActionsMap.get(rowId);
     }

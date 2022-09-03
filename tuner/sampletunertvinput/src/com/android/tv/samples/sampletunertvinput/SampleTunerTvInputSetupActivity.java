@@ -20,16 +20,15 @@ import com.android.tv.testing.data.ChannelInfo;
 import com.android.tv.testing.data.ChannelUtils;
 import com.android.tv.testing.data.ProgramInfo;
 
-import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.Collections;
+import java.util.Locale;
 
 /** Setup activity for SampleTunerTvInput */
 public class SampleTunerTvInputSetupActivity extends Activity {
     private static final String TAG = "SampleTunerTvInput";
     private static final boolean DEBUG = true;
 
-    private static final String ES_FILE_NAME = "test.ts";
+    private static final String SETUP_INPUT_FILE_NAME = "setup.ts";
 
     private Tuner mTuner;
     private DvrPlayback mDvr;
@@ -58,13 +57,24 @@ public class SampleTunerTvInputSetupActivity extends Activity {
     }
 
     private void setChannel(byte[] sectionData) {
-        // Currently reading single value directly as a test
-        String channelNumber = new String(Arrays.copyOfRange(sectionData, 3, 6));
+        SampleTunerTvInputSectionParser.TvctChannelInfo channelInfo =
+                SampleTunerTvInputSectionParser.parseTvctSection(sectionData);
+
+        String channelNumber = "";
+        String channelName = "";
+
+        if(channelInfo == null) {
+            Log.e(TAG, "Did not receive channel description from parser");
+        } else {
+            channelNumber = String.format(Locale.US, "%d-%d", channelInfo.getMajorChannelNumber(),
+                    channelInfo.getMinorChannelNumber());
+            channelName = channelInfo.getChannelName();
+        }
 
         ChannelInfo channel =
                 new ChannelInfo.Builder()
                         .setNumber(channelNumber)
-                        .setName("Sample Channel")
+                        .setName(channelName)
                         .setLogoUrl(
                                 ChannelInfo.getUriStringForChannelLogo(this, 100))
                         .setOriginalNetworkId(1)
@@ -141,7 +151,7 @@ public class SampleTunerTvInputSetupActivity extends Activity {
         mSectionFilter.start();
 
         mDvr = SampleTunerTvInputUtils.createDvrPlayback(mTuner, handler,
-                getApplicationContext(), ES_FILE_NAME, DvrSettings.DATA_FORMAT_TS);
+                getApplicationContext(), SETUP_INPUT_FILE_NAME, DvrSettings.DATA_FORMAT_TS);
         SampleTunerTvInputUtils.tune(mTuner, handler, mDvr);
         mDvr.start();
     }

@@ -1,12 +1,15 @@
 package com.android.tv.samples.sampletunertvinput;
 
+import static android.media.tv.TvInputManager.VIDEO_UNAVAILABLE_REASON_TUNING;
 import static android.media.tv.TvInputManager.VIDEO_UNAVAILABLE_REASON_UNKNOWN;
 
+import android.content.ContentUris;
+import android.content.ContentValues;
 import android.content.Context;
 import android.media.MediaCodec;
 import android.media.MediaCodec.BufferInfo;
-import android.media.MediaCodec.LinearBlock;
 import android.media.MediaFormat;
+import android.media.tv.TvContract;
 import android.media.tv.tuner.dvr.DvrPlayback;
 import android.media.tv.tuner.dvr.DvrSettings;
 import android.media.tv.tuner.filter.Filter;
@@ -15,10 +18,13 @@ import android.media.tv.tuner.filter.FilterEvent;
 import android.media.tv.tuner.filter.MediaEvent;
 import android.media.tv.tuner.Tuner;
 import android.media.tv.TvInputService;
+import android.media.tv.tuner.filter.SectionEvent;
 import android.net.Uri;
 import android.os.Handler;
 import android.util.Log;
 import android.view.Surface;
+
+import com.android.tv.common.util.Clock;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -35,6 +41,7 @@ public class SampleTunerTvInputService extends TvInputService {
 
     private static final int TIMEOUT_US = 100000;
     private static final boolean SAVE_DATA = false;
+    private static final boolean USE_DVR = true;
     private static final String MEDIA_INPUT_FILE_NAME = "media.ts";
     private static final MediaFormat VIDEO_FORMAT;
 
@@ -56,6 +63,7 @@ public class SampleTunerTvInputService extends TvInputService {
     public static final String INPUT_ID =
             "com.android.tv.samples.sampletunertvinput/.SampleTunerTvInputService";
     private String mSessionId;
+    private Uri mChannelUri;
 
     @Override
     public TvInputSessionImpl onCreateSession(String inputId, String sessionId) {
@@ -88,10 +96,11 @@ public class SampleTunerTvInputService extends TvInputService {
         private Tuner mTuner;
         private MediaCodec mMediaCodec;
         private Thread mDecoderThread;
-        private Deque<MediaEvent> mDataQueue;
-        private List<MediaEvent> mSavedData;
+        private Deque<MediaEventData> mDataQueue;
+        private List<MediaEventData> mSavedData;
         private long mCurrentLoopStartTimeUs = 0;
         private long mLastFramePtsUs = 0;
+        private boolean mVideoAvailable;
         private boolean mDataReady = false;
 
 
@@ -159,7 +168,11 @@ public class SampleTunerTvInputService extends TvInputService {
                 Log.e(TAG, "null codec!");
                 return false;
             }
+            mChannelUri = uri;
             mHandler = new Handler();
+            mVideoAvailable = false;
+            notifyVideoUnavailable(VIDEO_UNAVAILABLE_REASON_TUNING);
+
             mDecoderThread =
                     new Thread(
                             this::decodeInternal,
@@ -189,9 +202,14 @@ public class SampleTunerTvInputService extends TvInputService {
                         }
                         if (events[i] instanceof MediaEvent) {
                             MediaEvent me = (MediaEvent) events[i];
-                            mDataQueue.add(me);
+
+                            MediaEventData storedEvent = MediaEventData.generateEventData(me);
+                            if (storedEvent == null) {
+                                continue;
+                            }
+                            mDataQueue.add(storedEvent);
                             if (SAVE_DATA) {
-                                mSavedData.add(me);
+                                mSavedData.add(storedEvent);
                             }
                         }
                     }
@@ -204,6 +222,42 @@ public class SampleTunerTvInputService extends TvInputService {
                     }
                     if (status == Filter.STATUS_DATA_READY) {
                         mDataReady = true;
+                    }
+                }
+            };
+        }
+
+        private FilterCallback sectionFilterCallback() {
+            return new FilterCallback() {
+                @Override
+                public void onFilterEvent(Filter filter, FilterEvent[] events) {
+                    if (DEBUG) {
+                        Log.d(TAG, "onFilterEvent section, size=" + events.length);
+                    }
+                    for (int i = 0; i < events.length; i++) {
+                        if (DEBUG) {
+                            Log.d(TAG, "events[" + i + "] is "
+                                    + events[i].getClass().getSimpleName());
+                        }
+                        if (events[i] instanceof SectionEvent) {
+                            SectionEvent sectionEvent = (SectionEvent) events[i];
+                            int dataSize = (int)sectionEvent.getDataLengthLong();
+                            if (DEBUG) {
+                                Log.d(TAG, "section dataSize:" + dataSize);
+                            }
+
+                            byte[] data = new byte[dataSize];
+                            filter.read(data, 0, dataSize);
+
+                            handleSection(data);
+                        }
+                    }
+                }
+
+                @Override
+                public void onFilterStatusChanged(Filter filter, int status) {
+                    if (DEBUG) {
+                        Log.d(TAG, "onFilterStatusChanged section, status=" + status);
                     }
                 }
             };
@@ -223,6 +277,7 @@ public class SampleTunerTvInputService extends TvInputService {
 
             if (mMediaCodec == null) {
                 Log.e(TAG, "null codec!");
+                mVideoAvailable = false;
                 notifyVideoUnavailable(VIDEO_UNAVAILABLE_REASON_UNKNOWN);
                 return false;
             }
@@ -240,15 +295,21 @@ public class SampleTunerTvInputService extends TvInputService {
             mVideoFilter = SampleTunerTvInputUtils.createAvFilter(mTuner, mHandler,
                     videoFilterCallback(), false);
             mSectionFilter = SampleTunerTvInputUtils.createSectionFilter(mTuner, mHandler,
-                    SampleTunerTvInputUtils.createDefaultLoggingFilterCallback("section"));
+                    sectionFilterCallback());
             mAudioFilter.start();
             mVideoFilter.start();
             mSectionFilter.start();
-            // use dvr playback to feed the data on platform without physical tuner
-            mDvr = SampleTunerTvInputUtils.createDvrPlayback(mTuner, mHandler,
-                    mContext, MEDIA_INPUT_FILE_NAME, DvrSettings.DATA_FORMAT_TS);
-            SampleTunerTvInputUtils.tune(mTuner, mHandler, mDvr);
-            mDvr.start();
+
+            // Dvr Playback can be used to read a file instead of relying on physical tuner
+            if (USE_DVR) {
+                mDvr = SampleTunerTvInputUtils.configureDvrPlayback(mTuner, mHandler,
+                        DvrSettings.DATA_FORMAT_TS);
+                SampleTunerTvInputUtils.readFilePlaybackInput(getApplicationContext(), mDvr,
+                        MEDIA_INPUT_FILE_NAME);
+                mDvr.start();
+            } else {
+                SampleTunerTvInputUtils.tune(mTuner, mHandler);
+            }
             mMediaCodec.start();
 
             try {
@@ -275,24 +336,50 @@ public class SampleTunerTvInputService extends TvInputService {
             }
         }
 
-        private boolean handleDataBuffer(MediaEvent mediaEvent) {
-            if (mediaEvent.getLinearBlock() == null) {
-                if (DEBUG) Log.d(TAG, "getLinearBlock() == null");
-                return true;
+        private void handleSection(byte[] data) {
+            SampleTunerTvInputSectionParser.EitEventInfo eventInfo =
+                    SampleTunerTvInputSectionParser.parseEitSection(data);
+            if (eventInfo == null) {
+                Log.e(TAG, "Did not receive event info from parser");
+                return;
             }
+
+            // We assume that our program starts at the current time
+            long startTimeMs = Clock.SYSTEM.currentTimeMillis();
+            long endTimeMs = startTimeMs + ((long)eventInfo.getLengthSeconds() * 1000);
+
+            // Remove any other programs which conflict with our start and end time
+            Uri conflictsUri =
+                    TvContract.buildProgramsUriForChannel(mChannelUri, startTimeMs, endTimeMs);
+            int programsDeleted = mContext.getContentResolver().delete(conflictsUri, null, null);
+            if (DEBUG) {
+                Log.d(TAG, "Deleted " + programsDeleted + " conflicting program(s)");
+            }
+
+            // Insert our new program into the newly opened time slot
+            ContentValues values = new ContentValues();
+            values.put(TvContract.Programs.COLUMN_CHANNEL_ID, ContentUris.parseId(mChannelUri));
+            values.put(TvContract.Programs.COLUMN_START_TIME_UTC_MILLIS, startTimeMs);
+            values.put(TvContract.Programs.COLUMN_END_TIME_UTC_MILLIS, endTimeMs);
+            values.put(TvContract.Programs.COLUMN_TITLE, eventInfo.getEventTitle());
+            values.put(TvContract.Programs.COLUMN_SHORT_DESCRIPTION, "");
+            if (DEBUG) {
+                Log.d(TAG, "Inserting program with values: " + values);
+            }
+            mContext.getContentResolver().insert(TvContract.Programs.CONTENT_URI, values);
+        }
+
+        private boolean handleDataBuffer(MediaEventData mediaEventData) {
             boolean success = false;
-            LinearBlock block = mediaEvent.getLinearBlock();
-            if (queueCodecInputBuffer(block, mediaEvent.getDataLength(), mediaEvent.getOffset(),
-                                  mediaEvent.getPts())) {
+            if (queueCodecInputBuffer(mediaEventData.getData(), mediaEventData.getDataSize(),
+                    mediaEventData.getPts())) {
                 releaseCodecOutputBuffer();
                 success = true;
             }
-            mediaEvent.release();
             return success;
         }
 
-        private boolean queueCodecInputBuffer(LinearBlock block, long sampleSize,
-                                              long offset, long pts) {
+        private boolean queueCodecInputBuffer(byte[] data, int size, long pts) {
             int res = mMediaCodec.dequeueInputBuffer(TIMEOUT_US);
             if (res >= 0) {
                 ByteBuffer buffer = mMediaCodec.getInputBuffer(res);
@@ -300,41 +387,19 @@ public class SampleTunerTvInputService extends TvInputService {
                     throw new RuntimeException("Null decoder input buffer");
                 }
 
-                ByteBuffer data = block.map();
-                if (offset > 0 && offset < data.limit()) {
-                    data.position((int) offset);
-                } else {
-                    data.position(0);
-                }
-
                 if (DEBUG) {
                     Log.d(
                         TAG,
                         "Decoder: Send data to decoder."
-                            + " Sample size="
-                            + sampleSize
                             + " pts="
                             + pts
-                            + " limit="
-                            + data.limit()
-                            + " pos="
-                            + data.position()
                             + " size="
-                            + (data.limit() - data.position()));
+                            + size);
                 }
                 // fill codec input buffer
-                int size = sampleSize > data.limit() ? data.limit() : (int) sampleSize;
-                if (DEBUG) Log.d(TAG, "limit " + data.limit() + " sampleSize " + sampleSize);
-                if (data.hasArray()) {
-                    Log.d(TAG, "hasArray");
-                    buffer.put(data.array(), 0, size);
-                } else {
-                    byte[] array = new byte[size];
-                    data.get(array, 0, size);
-                    buffer.put(array, 0, size);
-                }
+                buffer.put(data, 0, size);
 
-                mMediaCodec.queueInputBuffer(res, 0, (int) sampleSize, pts, 0);
+                mMediaCodec.queueInputBuffer(res, 0, size, pts, 0);
             } else {
                 if (DEBUG) Log.d(TAG, "queueCodecInputBuffer res=" + res);
                 return false;
@@ -378,9 +443,12 @@ public class SampleTunerTvInputService extends TvInputService {
                     }
                 }
                 mMediaCodec.releaseOutputBuffer(res, true);
-                notifyVideoAvailable();
-                if (DEBUG) {
-                    Log.d(TAG, "notifyVideoAvailable");
+                if (!mVideoAvailable) {
+                    mVideoAvailable = true;
+                    notifyVideoAvailable();
+                    if (DEBUG) {
+                        Log.d(TAG, "notifyVideoAvailable");
+                    }
                 }
             } else if (res == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 MediaFormat format = mMediaCodec.getOutputFormat();
@@ -398,5 +466,76 @@ public class SampleTunerTvInputService extends TvInputService {
             }
         }
 
+    }
+
+    /**
+     * MediaEventData is a helper class which is used to hold the data within MediaEvents
+     * locally in our Java code, instead of in the position allocated by our native code
+     */
+    public static class MediaEventData {
+        private final long mPts;
+        private final int mDataSize;
+        private final byte[] mData;
+
+        public MediaEventData(long pts, int dataSize, byte[] data) {
+            mPts = pts;
+            mDataSize = dataSize;
+            mData = data;
+        }
+
+        /**
+         * Parses a MediaEvent, including copying its data and freeing the underlying LinearBlock
+         * @return {@code null} if the event has no LinearBlock
+         */
+        public static MediaEventData generateEventData(MediaEvent event) {
+            if(event.getLinearBlock() == null) {
+                if (DEBUG) {
+                    Log.d(TAG, "MediaEvent had null LinearBlock");
+                }
+                return null;
+            }
+
+            ByteBuffer memoryBlock = event.getLinearBlock().map();
+            int eventOffset = (int)event.getOffset();
+            int eventDataLength = (int)event.getDataLength();
+            if (DEBUG) {
+                Log.d(TAG, "MediaEvent has length=" + eventDataLength
+                        + " offset=" + eventOffset
+                        + " capacity=" + memoryBlock.capacity()
+                        + " limit=" + memoryBlock.limit());
+            }
+            if (eventOffset < 0 || eventDataLength < 0 || eventOffset >= memoryBlock.limit()) {
+                if (DEBUG) {
+                    Log.e(TAG, "MediaEvent length or offset was invalid");
+                }
+                event.getLinearBlock().recycle();
+                event.release();
+                return null;
+            }
+            // We allow the case of eventOffset + eventDataLength > memoryBlock.limit()
+            // When it occurs, we read until memoryBlock.limit
+            int dataSize = Math.min(eventDataLength, memoryBlock.limit() - eventOffset);
+            memoryBlock.position(eventOffset);
+
+            byte[] memoryData = new byte[dataSize];
+            memoryBlock.get(memoryData, 0, dataSize);
+            MediaEventData eventData = new MediaEventData(event.getPts(), dataSize, memoryData);
+
+            event.getLinearBlock().recycle();
+            event.release();
+            return eventData;
+        }
+
+        public long getPts() {
+            return mPts;
+        }
+
+        public int getDataSize() {
+            return mDataSize;
+        }
+
+        public byte[] getData() {
+            return mData;
+        }
     }
 }

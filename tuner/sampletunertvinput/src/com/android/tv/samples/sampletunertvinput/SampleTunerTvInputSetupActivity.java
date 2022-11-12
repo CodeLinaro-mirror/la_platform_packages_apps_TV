@@ -16,18 +16,22 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
+import com.android.tv.common.util.Clock;
 import com.android.tv.testing.data.ChannelInfo;
 import com.android.tv.testing.data.ChannelUtils;
 import com.android.tv.testing.data.ProgramInfo;
+import com.android.tv.testing.data.ProgramUtils;
 
 import java.util.Collections;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 
 /** Setup activity for SampleTunerTvInput */
 public class SampleTunerTvInputSetupActivity extends Activity {
     private static final String TAG = "SampleTunerTvInput";
     private static final boolean DEBUG = true;
 
+    private static final boolean USE_DVR = true;
     private static final String SETUP_INPUT_FILE_NAME = "setup.ts";
 
     private Tuner mTuner;
@@ -83,23 +87,13 @@ public class SampleTunerTvInputSetupActivity extends Activity {
                         .setAudioChannel(2)
                         .setAudioLanguageCount(1)
                         .setHasClosedCaption(false)
-                        .setProgram(
-                                new ProgramInfo(
-                                        "Sample Program",
-                                        "",
-                                        0,
-                                        0,
-                                        ProgramInfo.GEN_POSTER,
-                                        "Sample description",
-                                        ProgramInfo.GEN_DURATION,
-                                        null,
-                                        ProgramInfo.GEN_GENRE,
-                                        null))
                         .build();
 
         Intent intent = getIntent();
         String inputId = intent.getStringExtra(TvInputInfo.EXTRA_INPUT_ID);
         ChannelUtils.updateChannels(this, inputId, Collections.singletonList(channel));
+        ProgramUtils.updateProgramForAllChannelsOf(this, inputId, Clock.SYSTEM,
+                TimeUnit.DAYS.toMillis(1));
 
         setResult(Activity.RESULT_OK);
         finish();
@@ -150,10 +144,16 @@ public class SampleTunerTvInputSetupActivity extends Activity {
                 sectionFilterCallback());
         mSectionFilter.start();
 
-        mDvr = SampleTunerTvInputUtils.createDvrPlayback(mTuner, handler,
-                getApplicationContext(), SETUP_INPUT_FILE_NAME, DvrSettings.DATA_FORMAT_TS);
-        SampleTunerTvInputUtils.tune(mTuner, handler, mDvr);
-        mDvr.start();
+        // Dvr Playback can be used to read a file instead of relying on physical tuner
+        if (USE_DVR) {
+            mDvr = SampleTunerTvInputUtils.configureDvrPlayback(mTuner, handler,
+                    DvrSettings.DATA_FORMAT_TS);
+            SampleTunerTvInputUtils.readFilePlaybackInput(getApplicationContext(), mDvr,
+                    SETUP_INPUT_FILE_NAME);
+            mDvr.start();
+        } else {
+            SampleTunerTvInputUtils.tune(mTuner, handler);
+        }
     }
 
 }

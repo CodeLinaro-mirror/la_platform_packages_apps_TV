@@ -92,7 +92,7 @@ version_code_package := $(code_version_major)$(base_version_minor)$(code_version
 # - For build server (t=1):  M.mm.bbb (nnnnnn-ad)
 #       where nnnnnn is the build number from the build server (no zero-padding)
 #       and hh is the git hash
-# On eng builds, the BUILD_NUMBER_FROM_FILE has the user and timestamp inline
+# On eng builds, the BUILD_NUMBER has the user and timestamp inline
 ifdef TARGET_BUILD_APPS
 ifeq ($(strip $(HAS_BUILD_NUMBER)),false)
     git_hash := $(shell git --git-dir $(LOCAL_PATH)/.git log -n 1 --pretty=format:%h)
